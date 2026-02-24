@@ -13,10 +13,43 @@ const allCardsSection = document.getElementById("allCards");
 const mainContainer = document.querySelector("main");
 const filterSection = document.getElementById("filtered-section");
 
+// Empty state HTML
+function getEmptyStateHTML() {
+  return `
+    <div class="flex flex-col items-center justify-center py-16 px-4">
+      <div class="mb-4">
+        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="4" width="40" height="48" rx="4" fill="#dbe6f6" stroke="#4c7de6" stroke-width="2"/>
+          <rect x="16" y="16" width="24" height="3" rx="1.5" fill="#4c7de6"/>
+          <rect x="16" y="23" width="24" height="3" rx="1.5" fill="#4c7de6"/>
+          <rect x="16" y="30" width="24" height="3" rx="1.5" fill="#4c7de6"/>
+          <rect x="16" y="37" width="16" height="3" rx="1.5" fill="#4c7de6"/>
+        </svg>
+      </div>
+      <h3 class="text-[#1b2a4a] text-[18px] font-bold outfit mb-1">No jobs available</h3>
+      <p class="text-gray-400 text-[14px]">Check back soon for new job opportunities</p>
+    </div>
+  `;
+}
+
 function calculateCount() {
-  totalCount.innerText = allCardsSection.children.length;
+  // Count only actual job cards (exclude empty state)
+  const jobCards = allCardsSection.querySelectorAll(":scope > .bg-white");
+  totalCount.innerText = jobCards.length;
   interviewCount.innerText = interviewList.length;
   rejectedCount.innerText = rejectedList.length;
+
+  // Show/hide empty state for allCards section
+  const existingEmpty = allCardsSection.querySelector(".empty-state");
+  if (jobCards.length === 0 && !existingEmpty) {
+    const emptyDiv = document.createElement("div");
+    emptyDiv.className =
+      "empty-state bg-white rounded-lg border border-gray-200 mb-4";
+    emptyDiv.innerHTML = getEmptyStateHTML();
+    allCardsSection.appendChild(emptyDiv);
+  } else if (jobCards.length > 0 && existingEmpty) {
+    existingEmpty.remove();
+  }
 }
 calculateCount();
 
@@ -51,8 +84,43 @@ function toggleStyle(id) {
 
 //Main functionalities
 mainContainer.addEventListener("click", function (event) {
-  if (event.target.classList.contains("interview-btn")) {
-    const parentNode = event.target.parentNode.parentNode;
+  const target = event.target;
+
+  // --- DELETE HANDLER ---
+  if (
+    target.classList.contains("btn-delete") ||
+    target.closest(".btn-delete")
+  ) {
+    const parentNode = target.closest(".bg-white");
+    if (!parentNode) return;
+    const jobName = parentNode.querySelector(".jobName")?.innerText;
+
+    // Check which section the card belongs to
+    if (allCardsSection.contains(parentNode)) {
+      // Delete from All Cards section
+      parentNode.remove();
+      // Also remove from interview/rejected lists if it exists there
+      interviewList = interviewList.filter((item) => item.jobName !== jobName);
+      rejectedList = rejectedList.filter((item) => item.jobName !== jobName);
+    } else if (filterSection.contains(parentNode)) {
+      // Check which filter is active and delete from the correct list
+      if (interviewFilterButton.classList.contains("bg-[#4c7de6]")) {
+        interviewList = interviewList.filter(
+          (item) => item.jobName !== jobName,
+        );
+        renderInterview();
+      } else if (rejectedFilterButton.classList.contains("bg-[#4c7de6]")) {
+        rejectedList = rejectedList.filter((item) => item.jobName !== jobName);
+        renderReject();
+      }
+    }
+    calculateCount();
+    return;
+  }
+
+  // --- INTERVIEW HANDLER ---
+  if (target.classList.contains("interview-btn")) {
+    const parentNode = target.parentNode.parentNode;
     const jobName = parentNode.querySelector(".jobName").innerText;
     const jobTitle = parentNode.querySelector(".jobTitle").innerText;
     const jobArea = parentNode.querySelector(".area").innerText;
@@ -71,29 +139,40 @@ mainContainer.addEventListener("click", function (event) {
       (item) => item.jobName == cardInfo.jobName,
     );
 
-    // Update the status badge text AND styling on the original card
-    const statusBadge = parentNode.querySelector(".job-status");
-    statusBadge.innerText = "interviewed";
-    // Remove "Not Applied" styles
-    statusBadge.classList.remove(
-      "border-[#1b2a4a]",
-      "bg-[#f0f4f8]",
-      "text-[#1b2a4a]",
-    );
-    // Add "Interview" green styles
-    statusBadge.classList.add(
-      "border-green-500",
-      "bg-green-50",
-      "text-green-600",
-    );
-
     if (!jobExist) {
       interviewList.push(cardInfo);
     }
+    // Remove from rejected list if it was there
+    rejectedList = rejectedList.filter((item) => item.jobName !== jobName);
+
+    // Check where the click came from
+    if (allCardsSection.contains(parentNode)) {
+      // Clicked from All Cards — just update the badge, card stays
+      const statusBadge = parentNode.querySelector(".job-status");
+      statusBadge.innerText = "interviewed";
+      statusBadge.classList.remove(
+        "border-[#1b2a4a]",
+        "bg-[#f0f4f8]",
+        "text-[#1b2a4a]",
+        "border-red-500",
+        "bg-red-50",
+        "text-red-600",
+      );
+      statusBadge.classList.add(
+        "border-green-500",
+        "bg-green-50",
+        "text-green-600",
+      );
+    } else if (filterSection.contains(parentNode)) {
+      // Clicked from Rejected filter — card disappears, re-render current view
+      renderReject();
+    }
+
     calculateCount();
-    renderInterview();
-  } else if (event.target.classList.contains("rejected-btn")) {
-    const parentNode = event.target.parentNode.parentNode;
+
+    // --- REJECTED HANDLER ---
+  } else if (target.classList.contains("rejected-btn")) {
+    const parentNode = target.parentNode.parentNode;
     const jobName = parentNode.querySelector(".jobName").innerText;
     const jobTitle = parentNode.querySelector(".jobTitle").innerText;
     const jobArea = parentNode.querySelector(".area").innerText;
@@ -112,26 +191,32 @@ mainContainer.addEventListener("click", function (event) {
       (item) => item.jobName == cardInfo.jobName,
     );
 
-    // Update the status badge text AND styling on the original card
-    const statusBadge = parentNode.querySelector(".job-status");
-    statusBadge.innerText = "Rejected";
-    // Remove "Not Applied" and "Interview" styles
-    statusBadge.classList.remove(
-      "border-[#1b2a4a]",
-      "bg-[#f0f4f8]",
-      "text-[#1b2a4a]",
-      "border-green-500",
-      "bg-green-50",
-      "text-green-600",
-    );
-    // Add "Interview" green styles
-    statusBadge.classList.add("border-red-500", "bg-red-50", "text-red-600");
-
     if (!jobExist) {
       rejectedList.push(cardInfo);
     }
+    // Remove from interview list if it was there
+    interviewList = interviewList.filter((item) => item.jobName !== jobName);
+
+    // Check where the click came from
+    if (allCardsSection.contains(parentNode)) {
+      // Clicked from All Cards — just update the badge, card stays
+      const statusBadge = parentNode.querySelector(".job-status");
+      statusBadge.innerText = "Rejected";
+      statusBadge.classList.remove(
+        "border-[#1b2a4a]",
+        "bg-[#f0f4f8]",
+        "text-[#1b2a4a]",
+        "border-green-500",
+        "bg-green-50",
+        "text-green-600",
+      );
+      statusBadge.classList.add("border-red-500", "bg-red-50", "text-red-600");
+    } else if (filterSection.contains(parentNode)) {
+      // Clicked from Interview filter — card disappears, re-render current view
+      renderInterview();
+    }
+
     calculateCount();
-    renderReject();
   }
 });
 
@@ -139,8 +224,16 @@ mainContainer.addEventListener("click", function (event) {
 function renderInterview() {
   filterSection.innerHTML = "";
 
+  if (interviewList.length === 0) {
+    const emptyDiv = document.createElement("div");
+    emptyDiv.className =
+      "empty-state bg-white rounded-lg border border-gray-200 mb-4";
+    emptyDiv.innerHTML = getEmptyStateHTML();
+    filterSection.appendChild(emptyDiv);
+    return;
+  }
+
   for (let interview of interviewList) {
-    console.log(interview);
     let div = document.createElement("div");
     div.className = "bg-white rounded-lg border border-gray-200 p-6 mb-4";
     div.innerHTML = `
@@ -197,8 +290,16 @@ function renderInterview() {
 function renderReject() {
   filterSection.innerHTML = "";
 
+  if (rejectedList.length === 0) {
+    const emptyDiv = document.createElement("div");
+    emptyDiv.className =
+      "empty-state bg-white rounded-lg border border-gray-200 mb-4";
+    emptyDiv.innerHTML = getEmptyStateHTML();
+    filterSection.appendChild(emptyDiv);
+    return;
+  }
+
   for (let reject of rejectedList) {
-    console.log(reject);
     let div = document.createElement("div");
     div.className = "bg-white rounded-lg border border-gray-200 p-6 mb-4";
     div.innerHTML = `
